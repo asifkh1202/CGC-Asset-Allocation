@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: compliance-db
+    environment:
+      POSTGRES_DB: compliance_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/01_database_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - compliance-net
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: compliance-api
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: compliance_platform
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      JWT_SECRET: enterprise-compliance-jwt-secret-change-in-production
+      CORS_ORIGIN: http://localhost
+    ports:
+      - '5000:5000'
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - upload_data:/app/uploads
+    networks:
+      - compliance-net
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: compliance-frontend
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+    networks:
+      - compliance-net
+
+volumes:
+  postgres_data:
+  upload_data:
+
+networks:
+  compliance-net:
+    driver: bridge
